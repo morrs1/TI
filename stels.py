@@ -1,78 +1,60 @@
 from PIL import Image
 
 
-# Функция для встраивания секретного изображения в контейнер
-def encode_image(container_path, secret_path, output_path):
-    # Открытие контейнера и секретного изображения
-    container_img = Image.open(container_path)
-    secret_img = Image.open(secret_path)
+def image_to_bit_array(image_path):
+    img = Image.open(image_path)
+    image_bytes = img.tobytes()
+    bit_array = []
 
-    # Преобразуем секретное изображение в RGB (если оно не RGB)
-    secret_img = secret_img.convert("RGB")
+    for byte in image_bytes:
+        bit_array.append(format(byte, '08b'))
 
-    # Получаем размеры контейнера и секретного изображения
-    container_width, container_height = container_img.size
-    secret_width, secret_height = secret_img.size
-
-    # Проверка, что контейнер достаточно велик для встраивания секретного изображения
-    if container_width < secret_width or container_height < secret_height:
-        raise ValueError("Размер контейнера меньше размера секретного изображения")
-
-    # Скопируем контейнер, чтобы изменить его на месте
-    container_pixels = container_img.load()
-
-    # Встраиваем секретное изображение в контейнер
-    secret_pixels = secret_img.load()
-
-    for y in range(secret_height):
-        for x in range(secret_width):
-            # Получаем пиксель из секретного изображения
-            r, g, b = secret_pixels[x, y]
-
-            # Получаем текущий пиксель контейнера
-            cr, cg, cb = container_pixels[x, y]
-
-            # Заменяем LSB (наименее значащие биты) контейнера на биты пикселя секретного изображения
-            container_pixels[x, y] = (
-                (cr & 0xFE) | (r >> 7),  # Для красного канала
-                (cg & 0xFE) | (g >> 7),  # Для зеленого канала
-                (cb & 0xFE) | (b >> 7)  # Для синего канала
-            )
-
-    # Сохраняем измененное изображение
-    container_img.save(output_path)
+    return bit_array
 
 
-# Функция для извлечения скрытого изображения из контейнера
-def decode_image(container_path, output_path):
-    # Открываем изображение контейнер
-    container_img = Image.open(container_path)
-    container_img = container_img.convert("RGB")
+def bit_array_to_image(bit_array, width, height):
+    image_bytes = bytearray()
+    for bits in bit_array:
+        image_bytes.append(int(bits, 2))
 
-    container_pixels = container_img.load()
-    container_width, container_height = container_img.size
-
-    # Создаем новое изображение для извлеченной информации
-    secret_img = Image.new("RGB", (container_width, container_height))
-    secret_pixels = secret_img.load()
-
-    for y in range(container_height):
-        for x in range(container_width):
-            # Получаем пиксель контейнера
-            cr, cg, cb = container_pixels[x, y]
-
-            # Извлекаем LSB биты для каждого канала
-            r = (cr & 1) << 7
-            g = (cg & 1) << 7
-            b = (cb & 1) << 7
-
-            # Вставляем извлеченные пиксели в новое изображение
-            secret_pixels[x, y] = (r, g, b)
-
-    # Сохраняем извлеченное изображение
-    secret_img.save(output_path)
+    img = Image.frombytes('RGB', (width, height), bytes(image_bytes))
+    return img
 
 
-# Пример использования:
-encode_image("images/white.bmp", "images/some.bmp", "encoded_stels_image.png")
-decode_image("encoded_stels_image.png", "decoded_secret.png")
+def hide_image(path_container_img: str, path_secret_img: str):
+    bit_array_of_container = image_to_bit_array(path_container_img)
+    bit_array_of_secret = image_to_bit_array(path_secret_img)
+    for index_byte in range(0, len(bit_array_of_secret)):
+        for index_bit in range(0, len(bit_array_of_secret[index_byte])):
+            bit_array_of_container[index_byte * 8 + index_bit] = bit_array_of_container[index_byte * 8 + index_bit][
+                                                                 0:-1] + bit_array_of_secret[index_byte][index_bit]
+    bit_array_to_image(bit_array_of_container, 400, 200).save("stegano_hidden/encoded_img.bmp")
+    print(bit_array_of_container[0:200])
+
+
+def reveal(path_to_encoded_image: str):
+    bit_array_of_encoded_image = image_to_bit_array(path_to_encoded_image)
+    bit_array_of_reveal_image = []
+    buff_byte = ''
+    print(len(bit_array_of_encoded_image))
+    for index_of_byte in range(0, len(bit_array_of_encoded_image)):
+
+        if index_of_byte % 8 == 0 and index_of_byte != 0:
+            bit_array_of_reveal_image.append(buff_byte)
+            buff_byte = ''
+        buff_byte += bit_array_of_encoded_image[index_of_byte][-1]
+
+    if buff_byte:
+        buff_byte = buff_byte.ljust(8, '0')
+        bit_array_of_reveal_image.append(buff_byte)
+
+    print(len(bit_array_of_reveal_image))
+    bit_array_to_image(bit_array_of_reveal_image, 100, 100).save('stegano_revealed/revealed_img.bmp')
+
+
+def main():
+    hide_image('images/white(1).bmp', 'images/some.bmp')
+    reveal("stegano_hidden/encoded_img.bmp")
+
+
+main()
