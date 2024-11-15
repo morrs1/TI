@@ -53,7 +53,7 @@ def reveal(path_to_encoded_image: str):
 
 
 def main():
-    hide_image('images/white(1).bmp', 'images/some.bmp')
+    hide_image('images/white(1).bmp', 'images/krasivie-kartinki-peizazh-1.bmp')
     reveal("stegano_hidden/encoded_img.bmp")
 
 
